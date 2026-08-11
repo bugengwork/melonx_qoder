@@ -36,11 +36,13 @@ namespace Ryujinx.Memory
 
         public DualMappedJitAllocator(ulong size)
         {
+#if DEBUG
             var stackTrace = new StackTrace(1, false); // Skip *this* frame
             var callingMethod = stackTrace.GetFrame(0)?.GetMethod();
 
             Logger.Info?.Print(LogClass.Cpu,
                 $"Allocating dual-mapped JIT memory of size {size} bytes, called by {callingMethod?.DeclaringType?.FullName}.{callingMethod?.Name}");
+#endif
             Size = size;
             AllocateDualMapping();
         }

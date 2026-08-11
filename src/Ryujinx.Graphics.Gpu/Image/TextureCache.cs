@@ -1439,6 +1439,23 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
 
         /// <summary>
+        /// Trims the texture cache aggressively in response to system memory pressure.
+        /// </summary>
+        public void TrimForMemoryPressure()
+        {
+            _texturesLock.EnterWriteLock();
+
+            try
+            {
+                _cache.TrimForMemoryPressure();
+            }
+            finally
+            {
+                _texturesLock.ExitWriteLock();
+            }
+        }
+
+        /// <summary>
         /// Disposes all textures and samplers in the cache.
         /// It's an error to use the texture cache after disposal.
         /// </summary>

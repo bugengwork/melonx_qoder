@@ -52,6 +52,10 @@ final class RyujinxBridge {
         SN_stop_emulation()
     }
 
+    static func handleMemoryPressure() {
+        SN_handle_memory_pressure()
+    }
+
     static func mainRyu(argv: [String]) -> Int {
         return argv.withCStrings { cStrings, argc in
             Int(SN_main_ryujinx_sdl(argc, cStrings))
@@ -188,6 +192,9 @@ func SN_pause_emulation(_ shouldPause: Bool)
 
 @_silgen_name("stop_emulation")
 func SN_stop_emulation()
+
+@_silgen_name("handle_memory_pressure")
+func SN_handle_memory_pressure()
 
 @_silgen_name("initialize")
 func SN_initialize()

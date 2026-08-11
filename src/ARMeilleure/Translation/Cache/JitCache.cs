@@ -19,7 +19,7 @@ namespace ARMeilleure.Translation.Cache
 
         private const int CodeAlignment = 4; // Bytes.
         private const int CacheSize = 2047 * 1024 * 1024;
-        private const int CacheSizeIOS = 512 * 1024 * 1024;
+        private const int CacheSizeIOS = 256 * 1024 * 1024;
 
         private static ReservedRegion _jitRegion;
         private static DualMappedJitAllocator _jitRegion26;
@@ -52,12 +52,14 @@ namespace ARMeilleure.Translation.Cache
                 }
 
                 string dualMapped = Environment.GetEnvironmentVariable("DUAL_MAPPED_JIT");
+                int cacheSize = OperatingSystem.IsIOS() ? CacheSizeIOS : CacheSize;
+
                 if (dualMapped == "1") //(OperatingSystem.IsIOSVersionAtLeast(19) || OperatingSystem.IsIOSVersionAtLeast(26))
                 {
-                    _jitRegion26 = new DualMappedJitAllocator(CacheSizeIOS);
+                    _jitRegion26 = new DualMappedJitAllocator((ulong)cacheSize);
                 } else
                 {
-                    _jitRegion = new ReservedRegion(allocator, (ulong)(OperatingSystem.IsIOS() ? CacheSizeIOS : CacheSize));
+                    _jitRegion = new ReservedRegion(allocator, (ulong)cacheSize);
                 }
 
                 if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS() && !OperatingSystem.IsIOS())
@@ -65,7 +67,7 @@ namespace ARMeilleure.Translation.Cache
                     _jitCacheInvalidator = new JitCacheInvalidation(allocator);
                 }
 
-                _cacheAllocator = new CacheMemoryAllocator(CacheSize);
+                _cacheAllocator = new CacheMemoryAllocator(cacheSize);
 
                 if (OperatingSystem.IsWindows())
                 {
@@ -147,16 +149,26 @@ namespace ARMeilleure.Translation.Cache
 
         public static void Unmap(IntPtr pointer)
         {
-            if (OperatingSystem.IsIOS())
-            {
-                return;
-            }
-
             lock (_lock)
             {
                 Debug.Assert(_initialized);
 
-                int funcOffset = (int)(pointer.ToInt64() - _jitRegion.Pointer.ToInt64());
+                IntPtr basePtr;
+
+                if (_jitRegion != null)
+                {
+                    basePtr = _jitRegion.Pointer;
+                }
+                else if (_jitRegion26 != null)
+                {
+                    basePtr = _jitRegion26.RxPtr;
+                }
+                else
+                {
+                    return;
+                }
+
+                int funcOffset = (int)(pointer.ToInt64() - basePtr.ToInt64());
 
                 if (TryFind(funcOffset, out CacheEntry entry, out int entryIndex) && entry.Offset == funcOffset)
                 {
@@ -208,8 +220,6 @@ namespace ARMeilleure.Translation.Cache
             }
 
             int allocOffset = _cacheAllocator.Allocate(ref codeSize, alignment);
-
-            Console.WriteLine($"{allocOffset:x8}: {codeSize:x8} {alignment:x8}");
 
             if (allocOffset < 0)
             {

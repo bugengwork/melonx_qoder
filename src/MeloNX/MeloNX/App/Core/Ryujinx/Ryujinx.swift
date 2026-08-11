@@ -60,6 +60,18 @@ class Ryujinx : ObservableObject {
     
     init() {
         checkForJIT()
+        setupMemoryWarningObserver()
+    }
+    
+    private func setupMemoryWarningObserver() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self, self.isRunning else { return }
+            RyujinxBridge.handleMemoryPressure()
+        }
     }
     
     func addGames() {
