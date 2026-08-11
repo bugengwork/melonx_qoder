@@ -15,8 +15,8 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
 
     static class SpirvGenerator
     {
-        // Resource pools for Spirv generation. Note: Increase count when more threads are being used.
-        private const int GeneratorPoolCount = 1;
+        // Resource pools for Spirv generation. Sized to match the parallel disk cache loader thread count.
+        private const int GeneratorPoolCount = 8;
         private static readonly ObjectPool<SpvInstructionPool> _instructionPool;
         private static readonly ObjectPool<SpvLiteralIntegerPool> _integerPool;
         private static readonly object _poolLock;

@@ -34,6 +34,8 @@ namespace ARMeilleure
             Operands.Reset();
             Operations.Reset();
             References.Reset();
+            LiveRanges.Reset();
+            LiveIntervals.Reset();
         }
     }
 }

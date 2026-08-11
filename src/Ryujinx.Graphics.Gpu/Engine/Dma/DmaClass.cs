@@ -400,67 +400,78 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                     }
                 }
 
-                // OPT: This allocates a (potentially) huge temporary array and then copies an existing
-                // region of memory into it, data that might get overwritten entirely anyways. Ideally this should
-                // all be rewritten to use pooled arrays, but that gets complicated with packed data and strides
-                Span<byte> dstSpan = memoryManager.GetSpan(dstGpuVa + (ulong)dstBaseOffset, dstSize).ToArray();
+                // Rent the temporary destination buffer from the array pool instead of allocating a
+                // (potentially) huge array on every copy. Padding bytes between rows are not touched by
+                // the copy and must be preserved, so the existing destination contents are copied into
+                // the buffer first, and the entire region is written back afterwards.
+                byte[] dstBuffer = ArrayPool<byte>.Shared.Rent(dstSize);
+                Span<byte> dstSpan = dstBuffer.AsSpan(0, dstSize);
 
-                TextureParams srcParams = new(srcRegionX, srcRegionY, srcBaseOffset, srcBpp, srcLinear, srcCalculator);
-                TextureParams dstParams = new(dstRegionX, dstRegionY, dstBaseOffset, dstBpp, dstLinear, dstCalculator);
-
-                if (isIdentityRemap)
+                try
                 {
-                    // The order of the components doesn't change, so we can just copy directly
-                    // (with layout conversion if necessary).
+                    memoryManager.GetSpan(dstGpuVa + (ulong)dstBaseOffset, dstSize).CopyTo(dstSpan);
 
-                    switch (srcBpp)
+                    TextureParams srcParams = new(srcRegionX, srcRegionY, srcBaseOffset, srcBpp, srcLinear, srcCalculator);
+                    TextureParams dstParams = new(dstRegionX, dstRegionY, dstBaseOffset, dstBpp, dstLinear, dstCalculator);
+
+                    if (isIdentityRemap)
                     {
-                        case 1:
-                            Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 2:
-                            Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 4:
-                            Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 8:
-                            Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 12:
-                            Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 16:
-                            Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        default:
-                            throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
+                        // The order of the components doesn't change, so we can just copy directly
+                        // (with layout conversion if necessary).
+
+                        switch (srcBpp)
+                        {
+                            case 1:
+                                Copy<byte>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 2:
+                                Copy<ushort>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 4:
+                                Copy<uint>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 8:
+                                Copy<ulong>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 12:
+                                Copy<Bpp12Pixel>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 16:
+                                Copy<Vector128<byte>>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            default:
+                                throw new NotSupportedException($"Unable to copy ${srcBpp} bpp pixel format.");
+                        }
                     }
+                    else
+                    {
+                        // The order or value of the components might change.
+
+                        switch (componentSize)
+                        {
+                            case 1:
+                                CopyShuffle<byte>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 2:
+                                CopyShuffle<ushort>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 3:
+                                CopyShuffle<UInt24>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            case 4:
+                                CopyShuffle<uint>(dstSpan, srcSpan, dstParams, srcParams);
+                                break;
+                            default:
+                                throw new NotSupportedException($"Unable to copy ${componentSize} component size.");
+                        }
+                    }
+
+                    memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, dstSpan);
                 }
-                else
+                finally
                 {
-                    // The order or value of the components might change.
-
-                    switch (componentSize)
-                    {
-                        case 1:
-                            CopyShuffle<byte>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 2:
-                            CopyShuffle<ushort>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 3:
-                            CopyShuffle<UInt24>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        case 4:
-                            CopyShuffle<uint>(dstSpan, srcSpan, dstParams, srcParams);
-                            break;
-                        default:
-                            throw new NotSupportedException($"Unable to copy ${componentSize} component size.");
-                    }
+                    ArrayPool<byte>.Shared.Return(dstBuffer);
                 }
-
-                memoryManager.Write(dstGpuVa + (ulong)dstBaseOffset, dstSpan);
             }
             else
             {

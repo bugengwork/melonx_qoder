@@ -1,7 +1,6 @@
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
-using System.Linq;
 using VkFormat = Silk.NET.Vulkan.Format;
 
 namespace Ryujinx.Graphics.Vulkan
@@ -71,13 +70,21 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _device = device;
 
-            int colorsCount = colors.Count(IsValidTextureView);
+            int colorsCount = 0;
+
+            foreach (ITexture color in colors)
+            {
+                if (IsValidTextureView(color))
+                {
+                    colorsCount++;
+                }
+            }
 
             int count = colorsCount + (IsValidTextureView(depthStencil) ? 1 : 0);
 
             _attachments = new Auto<DisposableImageView>[count];
             _colors = new TextureView[colorsCount];
-            _colorsCanonical = colors.Select(color => color is TextureView view && view.Valid ? view : null).ToArray();
+            _colorsCanonical = new TextureView[colors.Length];
 
             AttachmentSamples = new uint[count];
             AttachmentFormats = new VkFormat[count];
@@ -100,6 +107,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                     _attachments[index] = texture.GetImageViewForAttachment();
                     _colors[index] = texture;
+                    _colorsCanonical[bindIndex] = texture;
                     _validColorAttachments |= 1u << bindIndex;
                     _baseAttachment = texture;
 
