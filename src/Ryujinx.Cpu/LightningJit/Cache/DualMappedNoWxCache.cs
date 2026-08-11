@@ -126,9 +126,9 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 AccessCount++;
             }
 
-            public double GetEvictionScore()
+            public double GetEvictionScore(DateTime now)
             {
-                double recencyScore = (DateTime.UtcNow - LastAccessTime).TotalSeconds;
+                double recencyScore = (now - LastAccessTime).TotalSeconds;
                 double frequencyScore = 1.0 / (AccessCount + 1);
                 return frequencyScore * 0.3 + recencyScore * 0.7;
             }
@@ -191,15 +191,25 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 return false; 
             }
 
-            var candidatesForEviction = _functionMetadata.Values
-                .Where(m => !_pendingMap.Has(m.GuestAddress))
-                .OrderByDescending(m => m.GetEvictionScore())
-                .ToList();
+            // Pre-compute scores with a single time snapshot to avoid O(n log n) UtcNow
+            // syscalls during sorting, then sort only by the cached score.
+            DateTime now = DateTime.UtcNow;
+            var candidatesForEviction = new List<(double Score, FunctionMetadata Meta)>(_functionMetadata.Count);
+
+            foreach (var meta in _functionMetadata.Values)
+            {
+                if (!_pendingMap.Has(meta.GuestAddress))
+                {
+                    candidatesForEviction.Add((meta.GetEvictionScore(now), meta));
+                }
+            }
+
+            candidatesForEviction.Sort(static (a, b) => b.Score.CompareTo(a.Score));
 
             int freedSpace = 0;
             int targetSpace = requiredSize * 2; 
 
-            foreach (var meta in candidatesForEviction)
+            foreach (var (_, meta) in candidatesForEviction)
             {
                 if (freedSpace >= targetSpace)
                 {

@@ -770,8 +770,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             int bufferDataLength = GetBufferDataLength(data.Length);
 
-            using var bufferHolder = _gd.BufferManager.Create(_gd, bufferDataLength);
-
             Auto<DisposableImage> imageAuto = GetImage();
 
             // Load texture data inline if the texture has been used on the current command buffer.
@@ -785,29 +783,55 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.PipelineInternal.EndRenderPass();
             }
 
-            CopyDataToBuffer(bufferHolder.GetDataStorage(0, bufferDataLength), data);
+            // Prefer reserving space on the staging buffer over creating a temporary Vulkan buffer
+            // for every upload. The buffer offset of the copy must remain a multiple of the texel
+            // block size, which is only guaranteed when it divides the staging reservation alignment.
+            int bpp = Info.BytesPerPixel;
+            bool useStaging = bpp > 0 &&
+                (bpp & (bpp - 1)) == 0 &&
+                (long)_gd.Capabilities.MinResourceAlignment % bpp == 0;
 
-            var buffer = bufferHolder.GetBuffer(cbs.CommandBuffer).Get(cbs).Value;
-            var image = imageAuto.Get(cbs).Value;
-
-            if (region.HasValue)
+            void CopyToImage(VkBuffer srcBuffer, int bufferOffset)
             {
-                CopyFromOrToBuffer(
-                    cbs.CommandBuffer,
-                    buffer,
-                    image,
-                    bufferDataLength,
-                    false,
-                    layer,
-                    level,
-                    region.Value.X,
-                    region.Value.Y,
-                    region.Value.Width,
-                    region.Value.Height);
+                var image = imageAuto.Get(cbs).Value;
+
+                if (region.HasValue)
+                {
+                    CopyFromOrToBuffer(
+                        cbs.CommandBuffer,
+                        srcBuffer,
+                        image,
+                        bufferDataLength,
+                        false,
+                        layer,
+                        level,
+                        region.Value.X,
+                        region.Value.Y,
+                        region.Value.Width,
+                        region.Value.Height,
+                        bufferOffset);
+                }
+                else
+                {
+                    CopyFromOrToBuffer(cbs.CommandBuffer, srcBuffer, image, bufferOffset + bufferDataLength, false, layer, level, layers, levels, singleSlice, bufferOffset);
+                }
+            }
+
+            if (useStaging)
+            {
+                using var buffer = _gd.BufferManager.ReserveOrCreate(_gd, cbs, bufferDataLength);
+
+                CopyDataToBuffer(buffer.Holder.GetDataStorage(buffer.Offset, bufferDataLength), data);
+
+                CopyToImage(buffer.Holder.GetBuffer(cbs.CommandBuffer).Get(cbs).Value, buffer.Offset);
             }
             else
             {
-                CopyFromOrToBuffer(cbs.CommandBuffer, buffer, image, bufferDataLength, false, layer, level, layers, levels, singleSlice);
+                using var bufferHolder = _gd.BufferManager.Create(_gd, bufferDataLength);
+
+                CopyDataToBuffer(bufferHolder.GetDataStorage(0, bufferDataLength), data);
+
+                CopyToImage(bufferHolder.GetBuffer(cbs.CommandBuffer).Get(cbs).Value, 0);
             }
         }
         
@@ -981,7 +1005,8 @@ namespace Ryujinx.Graphics.Vulkan
             int x,
             int y,
             int width,
-            int height)
+            int height,
+            int bufferOffset = 0)
         {
             var aspectFlags = Info.Format.ConvertAspectFlags();
 
@@ -1003,7 +1028,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             var region = new BufferImageCopy(
-                0,
+                (ulong)bufferOffset,
                 (uint)AlignUpNpot(width, rowLengthAlignment),
                 (uint)AlignUpNpot(height, Info.BlockHeight),
                 sl,

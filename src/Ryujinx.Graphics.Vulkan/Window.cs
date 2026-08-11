@@ -312,6 +312,10 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _gd.PipelineInternal.AutoFlush.Present();
 
+            // Flush all pending commands before acquiring the swapchain image, so the GPU
+            // can execute the frame's work while the CPU waits for the image to become available.
+            _gd.FlushAllCommands();
+
             uint nextImage = 0;
             int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
 
@@ -340,8 +344,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             var swapchainImage = _swapchainImages[nextImage];
-
-            _gd.FlushAllCommands();
 
             var cbs = _gd.CommandBufferPool.Rent();
 

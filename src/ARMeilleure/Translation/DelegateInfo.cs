@@ -10,6 +10,8 @@ namespace ARMeilleure.Translation
 
         public IntPtr FuncPtr { get; }
 
+        public System.Reflection.MethodInfo Method => _dlg.Method;
+
         public DelegateInfo(Delegate dlg, IntPtr funcPtr)
         {
             _dlg = dlg;

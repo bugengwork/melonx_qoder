@@ -23,7 +23,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <summary>
         /// Default flags used on the shader translation process.
         /// </summary>
-        public const TranslationFlags DefaultFlags = TranslationFlags.DebugMode;
+        public const TranslationFlags DefaultFlags = TranslationFlags.None;
 
         private readonly struct TranslatedShader
         {

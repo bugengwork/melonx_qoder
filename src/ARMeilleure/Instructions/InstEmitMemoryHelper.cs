@@ -15,6 +15,26 @@ namespace ARMeilleure.Instructions
         private const int PageBits = 12;
         private const int PageMask = (1 << PageBits) - 1;
 
+        // Cached MethodInfo for fallback memory access calls, indexed by access size.
+        // Avoids reflection lookups on every emitted guest memory instruction.
+        private static readonly MethodInfo[] _readMethods =
+        {
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadByte)),
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadUInt16)),
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadUInt32)),
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadUInt64)),
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadVector128)),
+        };
+
+        private static readonly MethodInfo[] _writeMethods =
+        {
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteByte)),
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteUInt16)),
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteUInt32)),
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteUInt64)),
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteVector128)),
+        };
+
         private enum Extension
         {
             Zx,
@@ -530,25 +550,7 @@ namespace ARMeilleure.Instructions
 
         private static Operand EmitReadIntFallback(ArmEmitterContext context, Operand address, int size)
         {
-            MethodInfo info = null;
-
-            switch (size)
-            {
-                case 0:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadByte));
-                    break;
-                case 1:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadUInt16));
-                    break;
-                case 2:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadUInt32));
-                    break;
-                case 3:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadUInt64));
-                    break;
-            }
-
-            return context.Call(info, address);
+            return context.Call(_readMethods[size], address);
         }
 
         private static void EmitReadVectorFallback(
@@ -559,28 +561,7 @@ namespace ARMeilleure.Instructions
             int elem,
             int size)
         {
-            MethodInfo info = null;
-
-            switch (size)
-            {
-                case 0:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadByte));
-                    break;
-                case 1:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadUInt16));
-                    break;
-                case 2:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadUInt32));
-                    break;
-                case 3:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadUInt64));
-                    break;
-                case 4:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.ReadVector128));
-                    break;
-            }
-
-            Operand value = context.Call(info, address);
+            Operand value = context.Call(_readMethods[size], address);
 
             switch (size)
             {
@@ -603,24 +584,6 @@ namespace ARMeilleure.Instructions
 
         private static void EmitWriteIntFallback(ArmEmitterContext context, Operand address, int rt, int size)
         {
-            MethodInfo info = null;
-
-            switch (size)
-            {
-                case 0:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteByte));
-                    break;
-                case 1:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteUInt16));
-                    break;
-                case 2:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteUInt32));
-                    break;
-                case 3:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteUInt64));
-                    break;
-            }
-
             Operand value = GetInt(context, rt);
 
             if (size < 3 && value.Type == OperandType.I64)
@@ -628,7 +591,7 @@ namespace ARMeilleure.Instructions
                 value = context.ConvertI64ToI32(value);
             }
 
-            context.Call(info, address, value);
+            context.Call(_writeMethods[size], address, value);
         }
 
         private static void EmitWriteVectorFallback(
@@ -638,27 +601,6 @@ namespace ARMeilleure.Instructions
             int elem,
             int size)
         {
-            MethodInfo info = null;
-
-            switch (size)
-            {
-                case 0:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteByte));
-                    break;
-                case 1:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteUInt16));
-                    break;
-                case 2:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteUInt32));
-                    break;
-                case 3:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteUInt64));
-                    break;
-                case 4:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.WriteVector128));
-                    break;
-            }
-
             Operand value = default;
 
             if (size < 4)
@@ -684,7 +626,7 @@ namespace ARMeilleure.Instructions
                 value = GetVec(rt);
             }
 
-            context.Call(info, address, value);
+            context.Call(_writeMethods[size], address, value);
         }
 
         private static Operand GetInt(ArmEmitterContext context, int rt)

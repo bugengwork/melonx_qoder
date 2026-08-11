@@ -14,6 +14,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using static ARMeilleure.IntermediateRepresentation.Operand.Factory;
@@ -41,6 +42,12 @@ namespace ARMeilleure.Translation
                 new( 7,  8),
                 new( 1,  6),
             };
+
+        // Cached MethodInfo to avoid reflection lookups on every translated function.
+        private static readonly MethodInfo _enqueueForRejitMethod =
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.EnqueueForRejit));
+        private static readonly MethodInfo _checkSynchronizationMethod =
+            typeof(NativeInterface).GetMethod(nameof(NativeInterface.CheckSynchronization));
 
         private readonly IJitMemoryAllocator _allocator;
         private readonly ConcurrentQueue<KeyValuePair<ulong, TranslatedFunction>> _oldFuncs;
@@ -470,7 +477,7 @@ namespace ARMeilleure.Translation
             context.Store(address, count);
             context.BranchIf(lblEnd, curCount, Const(MinsCallForRejit), Comparison.NotEqual, BasicBlockFrequency.Cold);
 
-            context.Call(typeof(NativeInterface).GetMethod(nameof(NativeInterface.EnqueueForRejit)), Const(context.EntryAddress));
+            context.Call(_enqueueForRejitMethod, Const(context.EntryAddress));
 
             context.MarkLabel(lblEnd);
         }
@@ -486,7 +493,7 @@ namespace ARMeilleure.Translation
             Operand count = context.Load(OperandType.I32, countAddr);
             context.BranchIfTrue(lblNonZero, count, BasicBlockFrequency.Cold);
 
-            Operand running = context.Call(typeof(NativeInterface).GetMethod(nameof(NativeInterface.CheckSynchronization)));
+            Operand running = context.Call(_checkSynchronizationMethod);
             context.BranchIfTrue(lblExit, running, BasicBlockFrequency.Cold);
 
             context.Return(Const(0L));

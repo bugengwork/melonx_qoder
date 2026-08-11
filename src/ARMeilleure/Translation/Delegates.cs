@@ -39,6 +39,11 @@ namespace ARMeilleure.Translation
         {
             ArgumentNullException.ThrowIfNull(info);
 
+            if (_methodIndexes.TryGetValue(info, out int methodIndex)) // O(1).
+            {
+                return _delegates.Values[methodIndex].FuncPtr; // O(1).
+            }
+
             string key = GetKey(info);
 
             if (!_delegates.TryGetValue(key, out DelegateInfo dlgInfo)) // O(log(n)).
@@ -52,6 +57,11 @@ namespace ARMeilleure.Translation
         public static int GetDelegateIndex(MethodInfo info)
         {
             ArgumentNullException.ThrowIfNull(info);
+
+            if (_methodIndexes.TryGetValue(info, out int methodIndex)) // O(1).
+            {
+                return methodIndex;
+            }
 
             string key = GetKey(info);
 
@@ -78,6 +88,7 @@ namespace ARMeilleure.Translation
         }
 
         private static readonly SortedList<string, DelegateInfo> _delegates;
+        private static readonly Dictionary<MethodInfo, int> _methodIndexes;
 
         static Delegates()
         {
@@ -430,6 +441,15 @@ namespace ARMeilleure.Translation
             SetDelegateInfo(dlgSoftFloat64FPSub, Marshal.GetFunctionPointerForDelegate<SoftFloat64FPSub>(dlgSoftFloat64FPSub));
 
             SetDelegateInfo(dlgSoftFloat64_16FPConvert, Marshal.GetFunctionPointerForDelegate<SoftFloat64_16FPConvert>(dlgSoftFloat64_16FPConvert));
+
+            // Build the MethodInfo lookup table for O(1) access by MethodInfo,
+            // avoiding string key allocation on hot paths.
+            _methodIndexes = new Dictionary<MethodInfo, int>(_delegates.Count);
+
+            for (int i = 0; i < _delegates.Count; i++)
+            {
+                _methodIndexes.Add(_delegates.Values[i].Method, i);
+            }
         }
 
         private delegate double MathAbs(double value);
