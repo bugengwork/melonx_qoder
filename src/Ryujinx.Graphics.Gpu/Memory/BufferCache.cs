@@ -32,6 +32,11 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         private const ulong MaxDynamicGrowthSize = 0x100000;
 
+        /// <summary>
+        /// Maximum number of entries in the dirty/modified lookup caches before they are trimmed.
+        /// </summary>
+        private const int MaxCacheEntries = 4096;
+
         private readonly GpuContext _context;
         private readonly PhysicalMemory _physicalMemory;
 
@@ -443,6 +448,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 result = new BufferCacheEntry(address, gpuVa, GetBuffer(address, size, BufferStage.Internal));
 
                 _dirtyCache[gpuVa] = result;
+
+                if (_dirtyCache.Count > MaxCacheEntries)
+                {
+                    _dirtyCache.Clear();
+                    _dirtyCache[gpuVa] = result;
+                }
             }
 
             result.Buffer.ForceDirty(result.Address, size);
@@ -478,6 +489,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 result = new BufferCacheEntry(address, alignedGpuVa, GetBuffer(address, size, BufferStage.None));
 
                 _modifiedCache[alignedGpuVa] = result;
+
+                if (_modifiedCache.Count > MaxCacheEntries)
+                {
+                    _modifiedCache.Clear();
+                    _modifiedCache[alignedGpuVa] = result;
+                }
             }
 
             outAddr = result.Address | (gpuVa & mask);
@@ -1076,6 +1093,17 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public void QueuePrune()
         {
             _pruneCaches = true;
+        }
+
+        /// <summary>
+        /// Trims the buffer cache dictionaries in response to system memory pressure.
+        /// Clears all cached dirty/modified entries to free managed memory.
+        /// </summary>
+        public void TrimForMemoryPressure()
+        {
+            _dirtyCache.Clear();
+            _modifiedCache.Clear();
+            _pruneCaches = false;
         }
 
         /// <summary>

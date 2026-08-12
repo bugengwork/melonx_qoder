@@ -48,9 +48,13 @@ namespace Ryujinx.Graphics.Gpu.Image
         private const int MinCountForDeletion = 32;
         private const int MaxCapacity = 2048;
         private const ulong MinTextureSizeCapacity = 512 * 1024 * 1024;
+        private const ulong MinTextureSizeCapacityIOS = 256 * 1024 * 1024;
         private const ulong MaxTextureSizeCapacity = 4UL * 1024 * 1024 * 1024;
+        private const ulong MaxTextureSizeCapacityIOS = 1UL * 1024 * 1024 * 1024;
         private const ulong DefaultTextureSizeCapacity = 1UL * 1024 * 1024 * 1024;
+        private const ulong DefaultTextureSizeCapacityIOS = 512UL * 1024 * 1024;
         private const float MemoryScaleFactor = 0.50f;
+        private const float MemoryScaleFactorIOS = 0.25f;
         private ulong _maxCacheMemoryUsage = 0;
 
         private readonly LinkedList<Texture> _textures;
@@ -70,13 +74,34 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="context">The GPU context that the cache belongs to</param>
         public void Initialize(GpuContext context)
         {
-            var cacheMemory = (ulong)(context.Capabilities.MaximumGpuMemory * MemoryScaleFactor);
+            bool isIOS = OperatingSystem.IsIOS();
 
-            _maxCacheMemoryUsage = Math.Clamp(cacheMemory, MinTextureSizeCapacity, MaxTextureSizeCapacity);
+            float scaleFactor = isIOS ? MemoryScaleFactorIOS : MemoryScaleFactor;
+            ulong minCapacity = isIOS ? MinTextureSizeCapacityIOS : MinTextureSizeCapacity;
+            ulong maxCapacity = isIOS ? MaxTextureSizeCapacityIOS : MaxTextureSizeCapacity;
+            ulong defaultCapacity = isIOS ? DefaultTextureSizeCapacityIOS : DefaultTextureSizeCapacity;
+
+            var cacheMemory = (ulong)(context.Capabilities.MaximumGpuMemory * scaleFactor);
+
+            _maxCacheMemoryUsage = Math.Clamp(cacheMemory, minCapacity, maxCapacity);
 
             if (context.Capabilities.MaximumGpuMemory == 0)
             {
-                _maxCacheMemoryUsage = DefaultTextureSizeCapacity;
+                _maxCacheMemoryUsage = defaultCapacity;
+            }
+        }
+
+        /// <summary>
+        /// Trims the cache aggressively in response to system memory pressure.
+        /// Removes textures until total size is below 50% of the maximum capacity.
+        /// </summary>
+        public void TrimForMemoryPressure()
+        {
+            ulong targetSize = _maxCacheMemoryUsage / 2;
+
+            while (_textures.Count > MinCountForDeletion && _totalSize > targetSize)
+            {
+                RemoveLeastUsedTexture();
             }
         }
 

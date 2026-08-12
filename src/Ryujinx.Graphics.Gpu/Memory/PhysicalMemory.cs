@@ -447,6 +447,15 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         /// <summary>
+        /// Trims GPU caches in response to system memory pressure.
+        /// </summary>
+        public void TrimForMemoryPressure()
+        {
+            TextureCache.TrimForMemoryPressure();
+            BufferCache.TrimForMemoryPressure();
+        }
+
+        /// <summary>
         /// Release our reference to the CPU memory manager.
         /// </summary>
         public void Dispose()

@@ -1,4 +1,5 @@
 using Ryujinx.Common;
+using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Device;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Gpu.Engine.GPFifo;
@@ -414,12 +415,41 @@ namespace Ryujinx.Graphics.Gpu
             _pendingSync = false;
         }
 
+        // Set when a memory pressure trim has been requested from a non-render thread.
+        private int _memoryPressureTrimRequested;
+
+        /// <summary>
+        /// Requests a cache trim in response to system memory pressure.
+        /// The trim runs on the render thread inside <see cref="RunDeferredActions"/>, since the
+        /// GPU caches are not safe to access from arbitrary threads. This method is thread-safe.
+        /// </summary>
+        internal void RequestMemoryPressureTrim()
+        {
+            Interlocked.Exchange(ref _memoryPressureTrimRequested, 1);
+        }
+
         /// <summary>
         /// Performs deferred actions.
         /// This is useful for actions that must run on the render thread, such as resource disposal.
         /// </summary>
         internal void RunDeferredActions()
         {
+            if (Interlocked.Exchange(ref _memoryPressureTrimRequested, 0) != 0)
+            {
+                foreach (var physicalMemory in PhysicalMemoryRegistry.Values)
+                {
+                    try
+                    {
+                        physicalMemory.TrimForMemoryPressure();
+                    }
+                    catch (Exception e)
+                    {
+                        // Best effort only: a trim failure must not crash the emulator under memory pressure.
+                        Logger.Debug?.Print(LogClass.Gpu, $"Memory pressure trim failed: {e.Message}");
+                    }
+                }
+            }
+
             while (DeferredActions.TryDequeue(out Action action))
             {
                 action();

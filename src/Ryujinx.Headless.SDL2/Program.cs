@@ -659,6 +659,27 @@ namespace Ryujinx.Headless.SDL2
             }
         }
 
+        [UnmanagedCallersOnly(EntryPoint = "handle_memory_pressure")]
+        public static void HandleMemoryPressure()
+        {
+            if (_emulationContext?.Gpu == null)
+            {
+                return;
+            }
+
+            // The GPU caches are only safe to access from the render thread, so request the
+            // trim to happen there instead of touching them from this (calling) thread.
+            _emulationContext.Gpu.RequestMemoryPressureTrim();
+
+            // Force a garbage collection to reclaim managed memory, off the calling thread.
+            ThreadPool.QueueUserWorkItem(static _ =>
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            });
+        }
+
         [UnmanagedCallersOnly(EntryPoint = "get_game_info")]
         public static GameInfoNative GetGameInfoNative(int descriptor, IntPtr extensionPtr)
         {
