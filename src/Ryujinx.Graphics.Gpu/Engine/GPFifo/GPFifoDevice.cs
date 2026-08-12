@@ -1,5 +1,6 @@
 using Ryujinx.Graphics.Gpu.Memory;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -42,6 +43,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
             public int[] Words;
 
             /// <summary>
+            /// Whether <see cref="Words"/> was rented from the array pool and must be returned after use.
+            /// </summary>
+            public bool WordsPooled;
+
+            /// <summary>
             /// The GPFIFO entry address (used in <see cref="CommandBufferType.NoPrefetch"/> mode).
             /// </summary>
             public ulong EntryAddress;
@@ -68,7 +74,22 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
             /// <param name="memoryManager">The memory manager used to fetch the data</param>
             public void Prefetch(MemoryManager memoryManager)
             {
-                Words = GetWords(memoryManager, true).ToArray();
+                // Rent the snapshot buffer from the pool to avoid a large array allocation per command buffer.
+                // The consumer returns it to the pool once the command buffer has been processed.
+                int[] words = ArrayPool<int>.Shared.Rent((int)EntryCount);
+
+                try
+                {
+                    GetWords(memoryManager, true).CopyTo(words);
+                }
+                catch
+                {
+                    ArrayPool<int>.Shared.Return(words);
+                    throw;
+                }
+
+                Words = words;
+                WordsPooled = true;
             }
 
             /// <summary>
@@ -79,7 +100,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
             /// <returns>The command buffer words</returns>
             public readonly ReadOnlySpan<int> Fetch(MemoryManager memoryManager, bool flush)
             {
-                return Words ?? GetWords(memoryManager, flush);
+                // Rented buffers may be larger than the entry count, so always slice to the real length.
+                return Words != null ? Words.AsSpan(0, (int)EntryCount) : GetWords(memoryManager, flush);
             }
         }
 
@@ -227,6 +249,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
                 }
 
                 entry.Processor.Process(entry.EntryAddress, words);
+
+                if (entry.WordsPooled)
+                {
+                    ArrayPool<int>.Shared.Return(entry.Words);
+                }
             }
 
             _interrupt = false;
