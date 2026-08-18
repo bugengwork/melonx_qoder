@@ -1,12 +1,13 @@
 using ARMeilleure.CodeGen.RegisterAllocators;
 using ARMeilleure.IntermediateRepresentation;
 using Ryujinx.Common.Memory;
+using System;
 using System.IO;
 using System.Numerics;
 
 namespace ARMeilleure.CodeGen.X86
 {
-    class CodeGenContext
+    class CodeGenContext : IDisposable
     {
         private readonly Stream _stream;
         private readonly Operand[] _blockLabels;
@@ -100,6 +101,11 @@ namespace ARMeilleure.CodeGen.X86
             }
 
             return label;
+        }
+
+        public void Dispose()
+        {
+            _stream.Dispose();
         }
     }
 }

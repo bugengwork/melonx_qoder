@@ -8,7 +8,7 @@ using System.IO;
 
 namespace ARMeilleure.CodeGen.Arm64
 {
-    class CodeGenContext
+    class CodeGenContext : IDisposable
     {
         private const int BccInstLength = 4;
         private const int CbnzInstLength = 4;
@@ -270,6 +270,11 @@ namespace ARMeilleure.CodeGen.Arm64
             }
 
             return (code, relocInfo);
+        }
+
+        public void Dispose()
+        {
+            _stream.Dispose();
         }
 
         private void WriteUInt64(ulong value)

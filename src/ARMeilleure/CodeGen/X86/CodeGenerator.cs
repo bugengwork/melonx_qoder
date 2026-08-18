@@ -159,41 +159,48 @@ namespace ARMeilleure.CodeGen.X86
 
             CodeGenContext context = new(allocResult, maxCallArgs, cfg.Blocks.Count, relocatable);
 
-            UnwindInfo unwindInfo = WritePrologue(context);
-
-            for (BasicBlock block = cfg.Blocks.First; block != null; block = block.ListNext)
+            try
             {
-                context.EnterBlock(block);
+                UnwindInfo unwindInfo = WritePrologue(context);
 
-                for (Operation node = block.Operations.First; node != default; node = node.ListNext)
+                for (BasicBlock block = cfg.Blocks.First; block != null; block = block.ListNext)
                 {
-                    GenerateOperation(context, node);
-                }
+                    context.EnterBlock(block);
 
-                if (block.SuccessorsCount == 0)
-                {
-                    // The only blocks which can have 0 successors are exit blocks.
-                    Operation last = block.Operations.Last;
-
-                    Debug.Assert(last.Instruction == Instruction.Tailcall ||
-                                 last.Instruction == Instruction.Return);
-                }
-                else
-                {
-                    BasicBlock succ = block.GetSuccessor(0);
-
-                    if (succ != block.ListNext)
+                    for (Operation node = block.Operations.First; node != default; node = node.ListNext)
                     {
-                        context.JumpTo(succ);
+                        GenerateOperation(context, node);
+                    }
+
+                    if (block.SuccessorsCount == 0)
+                    {
+                        // The only blocks which can have 0 successors are exit blocks.
+                        Operation last = block.Operations.Last;
+
+                        Debug.Assert(last.Instruction == Instruction.Tailcall ||
+                                     last.Instruction == Instruction.Return);
+                    }
+                    else
+                    {
+                        BasicBlock succ = block.GetSuccessor(0);
+
+                        if (succ != block.ListNext)
+                        {
+                            context.JumpTo(succ);
+                        }
                     }
                 }
+
+                (byte[] code, RelocInfo relocInfo) = context.Assembler.GetCode();
+
+                Logger.EndPass(PassName.CodeGeneration);
+
+                return new CompiledFunction(code, unwindInfo, relocInfo);
             }
-
-            (byte[] code, RelocInfo relocInfo) = context.Assembler.GetCode();
-
-            Logger.EndPass(PassName.CodeGeneration);
-
-            return new CompiledFunction(code, unwindInfo, relocInfo);
+            finally
+            {
+                context.Dispose();
+            }
         }
 
         private static void GenerateOperation(CodeGenContext context, Operation operation)
