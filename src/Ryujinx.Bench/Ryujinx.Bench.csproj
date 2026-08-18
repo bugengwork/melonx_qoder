@@ -10,16 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Silk.NET.Vulkan" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Ryujinx.Graphics.Vulkan\Ryujinx.Graphics.Vulkan.csproj" />
+    <ProjectReference Include="..\Ryujinx.Cpu\Ryujinx.Cpu.csproj" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
-    <None Include="..\Ryujinx.Headless.SDL2\bin\Debug\net8.0\libMoltenVK.dylib" Link="libMoltenVK.dylib" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\Ryujinx.Headless.SDL2\bin\Debug\net8.0\libMoltenVK.dylib" Link="libvulkan.dylib" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Ryujinx.Headless.SDL2\bin\Debug\net8.0\libarmeilleure-jitsupport.dylib" Link="libarmeilleure-jitsupport.dylib" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
