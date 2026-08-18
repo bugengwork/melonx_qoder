@@ -95,6 +95,21 @@ struct LoadingOverlayView: View {
         isAnimating = true
         Ryujinx.shared.showLoading = true
         
+        // 超时保护：30 秒后自动隐藏 loading（防止卡死）
+        let timeoutWorkItem = DispatchWorkItem { [self] in
+            Task { @MainActor in
+                if isLoading {
+                    print("Loading timeout triggered")
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        isLoading = false
+                        isAnimating = false
+                        Ryujinx.shared.showLoading = false
+                    }
+                }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: timeoutWorkItem)
+        
         RegisterCallbackWithData("ProgressWithPTCorShaderCache") { data in
             guard let rawData = data,
                   let jsonArray = try? JSONSerialization.jsonObject(with: rawData, options: []) as? [Any],

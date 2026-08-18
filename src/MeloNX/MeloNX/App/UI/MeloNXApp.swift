@@ -71,6 +71,7 @@ struct MeloNXApp: View {
                 }
             }
         }
+        .alertRouter()
     }
 
     @ViewBuilder

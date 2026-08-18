@@ -4,31 +4,36 @@
 //
 //  Created by Stossy11 on 04/07/2025.
 //
+//  showAlert 兼容层：统一路由到 AlertRouter（SwiftUI .alert 渲染）。
+//  新代码请直接使用 AlertRouter.shared.present(AppAlert...)。
+//
 
+import SwiftUI
 import UIKit
 
 func showAlert(_ viewController: UIViewController? = nil,
     title: String?,
     message: String?,
     actions: [(title: String, style: UIAlertAction.Style, handler: (() -> Void)?)]) {
-    
-    
-    let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
 
-    for action in actions {
-        let uiAction = UIAlertAction(title: action.title, style: action.style) { _ in
-            action.handler?()
-        }
-        alert.addAction(uiAction)
+    let appButtons = actions.map { action -> AppAlertButton in
+        let role: ButtonRole? = {
+            switch action.style {
+            case .cancel: return .cancel
+            case .destructive: return .destructive
+            default: return nil
+            }
+        }()
+        return AppAlertButton(title: action.title, role: role, action: action.handler)
     }
-    
-    if Thread.isMainThread {
-        let coolVC = viewController ?? UIApplication.shared.windows.first?.rootViewController!
-        coolVC!.present(alert, animated: true, completion: nil)
-    } else {
-        DispatchQueue.main.async {
-            let coolVC = viewController ?? UIApplication.shared.windows.first?.rootViewController!
-            coolVC!.present(alert, animated: true, completion: nil)
-        }
-    }
+
+    let alert = AppAlert(
+        title: title ?? "Error",
+        message: message ?? "Unknown error occurred.",
+        buttons: appButtons.isEmpty
+            ? [AppAlertButton(title: "OK", role: nil, action: nil)]
+            : appButtons
+    )
+
+    AlertRouter.shared.present(alert)
 }

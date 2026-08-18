@@ -37,7 +37,26 @@ struct SetupView: View {
                     endPoint: .bottomTrailing
                 )
                 .ignoresSafeArea()
-                .overlay(content: { IconAnimation(showMainSetup: $showMainSetup)})
+                .overlay {
+                    ZStack {
+                        IconAnimation(showMainSetup: $showMainSetup)
+                    }
+                    .overlay(alignment: .bottom) {
+                        // S1: 动画可跳过
+                        Button {
+                            showMainSetup = true
+                        } label: {
+                            Text("Skip")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 28)
+                                .padding(.vertical, 10)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .foregroundColor(.primary)
+                        }
+                        .padding(.bottom, 48)
+                    }
+                }
             }
         }
     }
@@ -202,7 +221,7 @@ struct SetupView: View {
                             action: { isImportingFirmware = true }
                         )
                         
-                        Button(action: { isInSetup = false }) {
+                        Button(action: { finishSetup() }) {
                             HStack {
                                 Text("Finish Setup")
                                     .fontWeight(.semibold)
@@ -333,7 +352,7 @@ struct SetupView: View {
                 
                 // Finish Button
                 VStack {
-                    Button(action: { isInSetup = false }) {
+                    Button(action: { finishSetup() }) {
                         HStack {
                             Text("Finish Setup")
                                 .fontWeight(.semibold)
@@ -399,7 +418,20 @@ struct SetupView: View {
             let selectedFiles = try result.get()
             
             guard selectedFiles.count == 2 else {
-                alertMessage = "Please select exactly 2 key files"
+                alertMessage = "Please select exactly 2 key files (prod.keys and title.keys)"
+                showAlert = true
+                return
+            }
+            
+            // 验证文件名是否是预期的 key 文件
+            let fileNames = selectedFiles.map { $0.lastPathComponent.lowercased() }
+            let requiredKeys = ["prod.keys", "title.keys"]
+            let hasRequiredKeys = requiredKeys.allSatisfy { required in
+                fileNames.contains { $0 == required }
+            }
+            
+            guard hasRequiredKeys else {
+                alertMessage = "Please select prod.keys and title.keys files"
                 showAlert = true
                 return
             }
@@ -421,6 +453,13 @@ struct SetupView: View {
             }
             
             keysImported = Ryujinx.shared.checkIfKeysImported()
+            
+            guard keysImported else {
+                alertMessage = "Keys import failed. Please ensure you selected valid prod.keys and title.keys files."
+                showAlert = true
+                return
+            }
+            
             alertMessage = "Keys imported successfully"
             showAlert = true
             
@@ -456,11 +495,18 @@ struct SetupView: View {
             if isErr {
                 alertMessage = string
                 showAlert = true
-            } else {
-                Ryujinx.shared.firmwareversion = string
+                return
             }
-                
+            
+            Ryujinx.shared.firmwareversion = string
             firmImported = (Ryujinx.shared.firmwareversion == "" ? "0" : Ryujinx.shared.firmwareversion) != "0"
+            
+            guard firmImported else {
+                alertMessage = "Firmware installation failed. Please check the firmware files."
+                showAlert = true
+                return
+            }
+            
             alertMessage = "Firmware installed successfully"
             showAlert = true
             
@@ -468,6 +514,21 @@ struct SetupView: View {
             alertMessage = "Error importing firmware: \(error.localizedDescription)"
             showAlert = true
         }
+    }
+    
+    private func finishSetup() {
+        // 最终验证：确保 keys 和 firmware 仍然有效
+        keysImported = Ryujinx.shared.checkIfKeysImported()
+        let firmware = Ryujinx.shared.fetchFirmwareVersion()
+        firmImported = (firmware == "" ? "0" : firmware) != "0"
+        
+        guard keysImported && firmImported else {
+            alertMessage = "Please complete all setup steps before finishing."
+            showAlert = true
+            return
+        }
+        
+        isInSetup = false
     }
     
     func appIcon(in bundle: Bundle = .main) -> String {

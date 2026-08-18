@@ -10,19 +10,125 @@ import Foundation
 @_silgen_name("csops")
 func csops(pid: Int32, ops: Int32, useraddr: UnsafeMutableRawPointer?, usersize: Int32) -> Int32
 
-func isJITEnabled() -> Bool {
+// MARK: - JIT 诊断结构体（G1）
 
+/// JIT 诊断结果：替代布尔返回值，给出具体失败原因与可执行建议。
+struct JITDiagnosis {
+    enum Status: String {
+        case enabled
+        case notDebugged
+        case dualmappedFailed
+        case memoryTestFailed
+        case unknown
+    }
+
+    let status: Status
+    /// 用户可读的原因说明
+    let detail: String
+    /// 用户可执行的下一步建议
+    let suggestion: String
+    /// 是否允许用户“忽略并继续”（继续会大概率崩溃）
+    let canProceedAnyway: Bool
+
+    static let enabled = JITDiagnosis(
+        status: .enabled,
+        detail: "JIT is enabled and working correctly.",
+        suggestion: "",
+        canProceedAnyway: true
+    )
+
+    static func failure(_ status: Status, detail: String, suggestion: String, canProceedAnyway: Bool = true) -> JITDiagnosis {
+        JITDiagnosis(status: status, detail: detail, suggestion: suggestion, canProceedAnyway: canProceedAnyway)
+    }
+
+    var isEnabled: Bool { status == .enabled }
+
+    var statusIcon: String {
+        switch status {
+        case .enabled: return "checkmark.circle.fill"
+        case .notDebugged: return "hammer.circle"
+        case .dualmappedFailed: return "rectangle.split.2x1"
+        case .memoryTestFailed: return "memorychip"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+}
+
+extension JITDiagnosis: Identifiable {
+    var id: String { status.rawValue }
+}
+
+/// JIT 诊断：分析失败原因，返回具体状态与建议。
+/// - Note: 保留原 isJITEnabled 的副作用（dualmapped 初始化 + succeededJIT 赋值）。
+func diagnoseJIT() -> JITDiagnosis {
+    // 1. 有 dynamic-codesigning entitlement（付费开发者 / TrollStore）
     if checkAppEntitlement("dynamic-codesigning") {
-        return allocateTest()
+        if allocateTest() {
+            return .enabled
+        }
+        AppErrorLogger.shared.warning(tag: "JIT", message: "Entitlement present but memory exec test failed")
+        return .failure(
+            .memoryTestFailed,
+            detail: "Your app has JIT entitlement, but the system refused to execute generated code.",
+            suggestion: "Restart the app. If the problem persists, reinstall the app.",
+            canProceedAnyway: false
+        )
     }
-    
-    LaunchGameHandler.succeededJIT = RyujinxBridge.initialize_dualmapped()
-    
+
+    // 2. 无 entitlement：依赖调试器（StikDebug/Xcode） + dualmapped
+    //    dualmapped 已在 App 启动（initializeEmulatorRuntime）/游戏启动（configureEnvironmentVariables）时初始化，
+    //    这里只读结果，避免 0.5s 轮询高频重复 mmap。
+    let debugged = checkDebugged()
+
     if #available(iOS 19, *) {
-        return checkDebugged() && LaunchGameHandler.succeededJIT
+        if debugged && LaunchGameHandler.succeededJIT {
+            return .enabled
+        }
+
+        if !debugged {
+            return .failure(
+                .notDebugged,
+                detail: "JIT is not enabled. MeloNX must be launched with a JIT debugger (StikDebug) to run games.",
+                suggestion: "Open StikDebug, select MeloNX, and enable JIT. Then return here.",
+                canProceedAnyway: false
+            )
+        }
+
+        // debugged 但 dualmapped 失败
+        AppErrorLogger.shared.warning(tag: "JIT", message: "Debugged but dual-mapped JIT init failed")
+        return .failure(
+            .dualmappedFailed,
+            detail: "JIT debugging is active, but dual-mapped memory setup failed.",
+            suggestion: "Re-enable JIT through StikDebug and try again.",
+            canProceedAnyway: false
+        )
     } else {
-        return checkDebugged() && allocateTest()
+        // iOS 15~18 路径
+        if debugged && allocateTest() {
+            return .enabled
+        }
+
+        if !debugged {
+            return .failure(
+                .notDebugged,
+                detail: "JIT is not enabled. MeloNX must be launched with a JIT debugger to run games.",
+                suggestion: "Open StikDebug (or your preferred JIT enabler), select MeloNX, and enable JIT. Then return here.",
+                canProceedAnyway: false
+            )
+        }
+
+        return .failure(
+            .memoryTestFailed,
+            detail: "JIT debugging is active, but the system refused to execute generated code.",
+            suggestion: "Re-enable JIT through StikDebug and try again.",
+            canProceedAnyway: false
+        )
     }
+}
+
+/// 兼容壳：旧调用点继续可用（内部走诊断路径）
+func isJITEnabled() -> Bool {
+    diagnoseJIT().isEnabled
 }
 
 func checkDebugged() -> Bool {

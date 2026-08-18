@@ -34,6 +34,7 @@ struct EmulationContainerView: View {
             )
             .id(loadingID)
         }
+        .gameAlertRouter()
 
     }
 }

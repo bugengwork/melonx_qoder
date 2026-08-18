@@ -126,11 +126,13 @@ struct ContentView: View {
                     }
                 }
                 .onAppear {
+                    LaunchGameHandler.isEmulationActive = true
                     Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
                         gameHandler.showApp = false
                     }
                 }
                 .onDisappear {
+                    LaunchGameHandler.isEmulationActive = false
                     gameHandler.showApp = true
                 }
                 .interactiveDismissDisabled()
@@ -154,6 +156,18 @@ struct ContentView: View {
             .fullScreenCover(isPresented: shouldCheckJITBinding) {
                 JITPopover() {}
                     .environmentObject(gameHandler)
+            }
+            .sheet(item: $gameHandler.jitDiagnosis) { diagnosis in
+                JITDiagnosticView(
+                    diagnosis: diagnosis,
+                    onRetry: {
+                        gameHandler.retryJITLaunch()
+                    },
+                    onProceedAnyway: nil,
+                    onCancel: {
+                        gameHandler.dismissJITDiagnosis()
+                    }
+                )
             }
             .onReceive(NotificationCenter.default.publisher(for: .init("URLOpened"))) { notif in
                 guard let url = notif.object as? URL else { return }

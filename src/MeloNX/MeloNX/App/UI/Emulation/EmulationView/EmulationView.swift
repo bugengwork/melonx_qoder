@@ -240,10 +240,17 @@ struct EmulationView: View {
         }
         
         Button(role: .destructive) {
-            stop()
+            AlertRouter.shared.present(
+                AppAlert.confirm(
+                    title: "Stop & Exit",
+                    message: "Stop emulation and return to the library? Unsaved progress will be lost.",
+                    confirmTitle: "Exit Game",
+                    onConfirm: { stop() }
+                )
+            )
         } label: {
             Label {
-                Text("Exit (Unstable)")
+                Text("Stop & Exit")
             } icon: {
                 Image(systemName: "x.circle")
             }
@@ -298,7 +305,11 @@ struct EmulationView: View {
         Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { _ in
             gameHandler.currentGame = nil
             RyujinxBridge.stopEmulation()
-            try? ryujinx.stop()
+            do {
+                try ryujinx.stop()
+            } catch {
+                AppErrorLogger.shared.error(tag: "Emulation", message: "Failed to stop emulation cleanly.", underlyingError: error)
+            }
         }
     }
     
